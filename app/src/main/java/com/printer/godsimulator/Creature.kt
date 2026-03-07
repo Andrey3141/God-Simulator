@@ -62,7 +62,8 @@ class Creature(
 
         when (state) {
             State.IDLE -> {
-                if (stateTime > Random.nextInt(30, 90)) {
+                // ✅ Используем конфиг
+                if (stateTime > Random.nextInt(GameConfig.CREATURE_IDLE_TIME_MIN, GameConfig.CREATURE_IDLE_TIME_MAX)) {
                     startRandomWalk()
                 }
             }
@@ -93,8 +94,9 @@ class Creature(
     }
 
     private fun startRandomWalk() {
-        val dx = Random.nextInt(-3, 4)
-        val dy = Random.nextInt(-3, 4)
+        // ✅ Используем конфиг
+        val dx = Random.nextInt(-GameConfig.CREATURE_WALK_DISTANCE, GameConfig.CREATURE_WALK_DISTANCE + 1)
+        val dy = Random.nextInt(-GameConfig.CREATURE_WALK_DISTANCE, GameConfig.CREATURE_WALK_DISTANCE + 1)
 
         targetX = tileX + dx
         targetY = tileY + dy
@@ -103,6 +105,7 @@ class Creature(
         if (targetX in 0 until maxTiles && targetY in 0 until maxTiles) {
             state = State.WALKING
             isMoving = true
+            // ✅ Используем конфиг
             stateTime = 0
         }
     }

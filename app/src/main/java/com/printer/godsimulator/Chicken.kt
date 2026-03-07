@@ -1,5 +1,4 @@
 package com.printer.godsimulator
-
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
@@ -11,7 +10,6 @@ class Chicken(
     var tileY: Int,
     private val spriteManager: SpriteManager
 ) {
-
     var world: World? = null
 
     private var direction = Direction.DOWN
@@ -24,12 +22,15 @@ class Chicken(
     private var targetX = tileX
     private var targetY = tileY
     private var moveProgress = 0f
-    private val moveSpeed = 0.05f
+
+    // ✅ Используем конфиг
+    private val moveSpeed = GameConfig.CHICKEN_MOVE_SPEED
 
     enum class State { WALKING, IDLE }
     var state = State.IDLE
     private var idleTimer = 0
-    private val idleTime = Random.nextInt(50, 150)
+    // ✅ Используем конфиг
+    private var idleTime = Random.nextInt(GameConfig.CHICKEN_IDLE_TIME_MIN, GameConfig.CHICKEN_IDLE_TIME_MAX)
 
     init {
         // Загружаем анимации
@@ -76,14 +77,16 @@ class Chicken(
         )
 
         val shuffled = directions.shuffled()
+        // ✅ Используем конфиг для дистанции
+        val walkDistance = Random.nextInt(GameConfig.CHICKEN_WALK_DISTANCE_MIN, GameConfig.CHICKEN_WALK_DISTANCE_MAX + 1)
 
         for ((dx, dy) in shuffled) {
-            val newX = tileX + dx
-            val newY = tileY + dy
+            val newX = tileX + dx * walkDistance
+            val newY = tileY + dy * walkDistance
 
             try {
                 val tile = world?.getTile(newX, newY)
-                if (tile != null && tile.type != TileType.WATER) {
+                if (tile != null && tile.type != TileType.WATER && tile.type != TileType.STONE) {
                     targetX = newX
                     targetY = newY
 
@@ -97,6 +100,8 @@ class Chicken(
 
                     state = State.WALKING
                     moveProgress = 0f
+                    // ✅ Новый случайный таймер покоя
+                    idleTime = Random.nextInt(GameConfig.CHICKEN_IDLE_TIME_MIN, GameConfig.CHICKEN_IDLE_TIME_MAX)
                     return
                 }
             } catch (e: Exception) {

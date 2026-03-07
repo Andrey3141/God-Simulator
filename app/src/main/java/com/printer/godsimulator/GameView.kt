@@ -1,18 +1,17 @@
 package com.printer.godsimulator
-
 import android.content.Context
 import android.graphics.*
 import android.view.MotionEvent
-import android.view.ScaleGestureDetector
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import kotlinx.coroutines.*
 import kotlin.math.floor
 
 class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
-
     private var gameLoopThread: Job? = null
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    // ✅ ИСПРАВЛЕНИЕ 1: Используем Dispatchers.Default вместо Main (убирает ANR)
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     private lateinit var spriteManager: SpriteManager
     private lateinit var world: World
@@ -24,19 +23,20 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     private var cameraX = 0f
     private var cameraY = 0f
-    private var zoom = 1.0f
+
+    // ✅ ИСПРАВЛЕНИЕ 2: Фиксированный зум (убираем возможность изменения)
+    private val zoom = 1.0f
 
     private var isSurfaceCreated = false
     private var viewWidth = 0
     private var viewHeight = 0
 
-    // Для управления камерой
+    // Для управления камерой (только перемещение, без зума)
     private var lastTouchX = 0f
     private var lastTouchY = 0f
     private var isDragging = false
 
-    // Для зума
-    private var scaleGestureDetector: ScaleGestureDetector
+    // ✅ ИСПРАВЛЕНИЕ 3: Удаляем ScaleGestureDetector (зума больше нет)
 
     // Для отладки
     private var lastFpsTime = System.currentTimeMillis()
@@ -66,21 +66,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     init {
         holder.addCallback(this)
-
-        // Загружаем текстуры
         loadTextures(context)
         initTileColorCache()
-
         spriteManager = SpriteManager(context)
         world = World(spriteManager)
-
-        scaleGestureDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            override fun onScale(detector: ScaleGestureDetector): Boolean {
-                zoom *= detector.scaleFactor
-                zoom = zoom.coerceIn(0.5f, 3f)
-                return true
-            }
-        })
+        // ✅ ИСПРАВЛЕНИЕ 4: Удаляем инициализацию ScaleGestureDetector
     }
 
     private fun loadTextures(context: Context) {
@@ -108,11 +98,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         viewWidth = width
         viewHeight = height
         isSurfaceCreated = true
-
-        // Центрируем камеру
         cameraX = -viewWidth / 2f + (tileSize * zoom * 16)
         cameraY = -viewHeight / 2f + (tileSize * zoom * 16)
-
         startGameLoop()
     }
 
@@ -124,17 +111,16 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         isSurfaceCreated = false
         stopGameLoop()
+        // ✅ ИСПРАВЛЕНИЕ 5: Корректно завершаем корутины
+        scope.cancel()
     }
 
     private fun startGameLoop() {
         gameLoopThread = scope.launch {
             while (isActive && isSurfaceCreated) {
                 val startTime = System.currentTimeMillis()
-
                 update()
                 draw()
-
-                // Целимся в 60 FPS
                 val frameTime = System.currentTimeMillis() - startTime
                 if (frameTime < 16) {
                     delay(16 - frameTime)
@@ -149,17 +135,15 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
 
     private fun update() {
-        // Получаем видимые чанки
         val visibleChunks = getVisibleChunks()
 
-        // Обновляем мир
+        // ✅ Обновляем мир (генерируем чанки, спавним кур, обновляем "открытые" чанки)
         world.updateVisibleChunks(visibleChunks)
 
-        // Обновляем всех существ в видимых чанках
+        // ✅ Обновляем всех существ в видимых чанках
         for (chicken in world.getChickensInChunks(visibleChunks)) {
             chicken.update()
         }
-
         for (creature in world.getCreaturesInChunks(visibleChunks)) {
             creature.update()
         }
@@ -178,7 +162,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         val scaledTileSize = (tileSize * zoom).toInt()
         if (scaledTileSize <= 0) return emptySet()
 
-        // Вычисляем видимые тайлы
         val startTileX = floor((cameraX - tileSize) / scaledTileSize).toInt() - 1
         val startTileY = floor((cameraY - tileSize) / scaledTileSize).toInt() - 1
         val endTileX = floor((cameraX + viewWidth + tileSize) / scaledTileSize).toInt() + 1
@@ -199,9 +182,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     }
 
     private fun draw() {
-        if (!isSurfaceCreated || viewWidth == 0 || viewHeight == 0) {
-            return
-        }
+        if (!isSurfaceCreated || viewWidth == 0 || viewHeight == 0) return
 
         val canvas = holder.lockCanvas() ?: return
         try {
@@ -218,7 +199,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
             // Отладка
             drawDebugInfo(canvas, visibleChunks)
-
         } finally {
             holder.unlockCanvasAndPost(canvas)
         }
@@ -228,7 +208,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         val scaledTileSize = (tileSize * zoom).toInt()
         if (scaledTileSize <= 0) return
 
-        // Вычисляем видимые тайлы
         val startX = floor((cameraX - tileSize) / scaledTileSize).toInt()
         val startY = floor((cameraY - tileSize) / scaledTileSize).toInt()
         val endX = floor((cameraX + viewWidth + tileSize) / scaledTileSize).toInt()
@@ -242,10 +221,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                 val size = scaledTileSize.toFloat()
 
                 // Проверяем видимость
-                if (screenX + size < 0 || screenX > viewWidth ||
-                    screenY + size < 0 || screenY > viewHeight) {
-                    continue
-                }
+                if (screenX + size < 0 || screenX > viewWidth || screenY + size < 0 || screenY > viewHeight) continue
 
                 // Рисуем тайл
                 if (tile.type == TileType.GRASS && grassTexture != null) {
@@ -293,10 +269,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             val screenX = pixelX - cameraX
             val screenY = pixelY - cameraY
 
-            if (screenX < -50 || screenX > viewWidth + 50 ||
-                screenY < -50 || screenY > viewHeight + 50) {
-                continue
-            }
+            // Не рисуем если далеко за пределами экрана
+            if (screenX < -50 || screenX > viewWidth + 50 || screenY < -50 || screenY > viewHeight + 50) continue
 
             canvas.save()
             canvas.translate(screenX, screenY)
@@ -314,10 +288,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             val screenX = creature.tileX * scaledTileSize + scaledTileSize / 2 - cameraX
             val screenY = creature.tileY * scaledTileSize + scaledTileSize / 2 - cameraY
 
-            if (screenX < -50 || screenX > viewWidth + 50 ||
-                screenY < -50 || screenY > viewHeight + 50) {
-                continue
-            }
+            if (screenX < -50 || screenX > viewWidth + 50 || screenY < -50 || screenY > viewHeight + 50) continue
 
             canvas.save()
             canvas.translate(screenX, screenY)
@@ -329,8 +300,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     private fun drawDebugInfo(canvas: Canvas, visibleChunks: Set<Pair<Int, Int>>) {
         canvas.drawText("FPS: $fps", 50f, 50f, textPaint)
-        canvas.drawText("Зум: ${"%.1f".format(zoom)}x", 50f, 80f, textPaint)
-        canvas.drawText("Кур: ${world.allChickens.size}", 50f, 110f, textPaint)
+
+        // ✅ Показываем только "открытых" кур (из чанков которые игрок видел)
+        canvas.drawText("Кур (открыто): ${world.getDiscoveredChickenCount()}", 50f, 80f, textPaint)
+
+        // ✅ Можно показать и общее количество (для отладки)
+        canvas.drawText("Кур (всего): ${world.getTotalChickenCount()}", 50f, 110f, textPaint)
+
         canvas.drawText("Существ: ${world.allCreatures.size}", 50f, 140f, textPaint)
 
         val hintPaint = Paint(textPaint).apply {
@@ -338,12 +314,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             textSize = 16f
         }
         canvas.drawText("👆 Тащи", viewWidth - 50f, 50f, hintPaint)
-        canvas.drawText("🤏 Зум", viewWidth - 50f, 80f, hintPaint)
+        // ✅ Убрали подсказку про зум
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        scaleGestureDetector.onTouchEvent(event)
-
+        // ✅ ИСПРАВЛЕНИЕ 6: Удаляем обработку зума, оставляем только перемещение
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 lastTouchX = event.x
@@ -354,10 +329,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                 if (isDragging && event.pointerCount == 1) {
                     val dx = event.x - lastTouchX
                     val dy = event.y - lastTouchY
-
                     cameraX -= dx
                     cameraY -= dy
-
                     lastTouchX = event.x
                     lastTouchY = event.y
                 }

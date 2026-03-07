@@ -1,5 +1,4 @@
 package com.printer.godsimulator
-
 import android.graphics.Color
 import kotlin.math.*
 import kotlin.random.Random
@@ -17,13 +16,13 @@ enum class TileType(val color: Int) {
 
 data class Tile(
     var type: TileType,
-    var treeCount: Int = 0
+    var treeCount: Int = 0,
+    var grassGrowth: Float = 0f  // ✅ Прогресс роста травы (0-100)
 )
 
 class World(private val spriteManager: SpriteManager) {
-
     private val chunks = mutableMapOf<Pair<Int, Int>, Array<Array<Tile>>>()
-    val chunkSize = 32
+    val chunkSize = GameConfig.CHUNK_SIZE
 
     private val creaturesByChunk = mutableMapOf<Pair<Int, Int>, MutableList<Creature>>()
     val allCreatures: List<Creature> get() = creaturesByChunk.values.flatten()
@@ -31,13 +30,20 @@ class World(private val spriteManager: SpriteManager) {
     private val chickensByChunk = mutableMapOf<Pair<Int, Int>, MutableList<Chicken>>()
     val allChickens: List<Chicken> get() = chickensByChunk.values.flatten()
 
+    // ✅ Отслеживаем "открытые" чанки
+    private val discoveredChunks = mutableSetOf<Pair<Int, Int>>()
+
     private val seed = Random.nextInt()
+
+    // ✅ Таймер для роста травы
+    private var lastGrassGrowthTime = System.currentTimeMillis()
 
     init {
         // Генерируем центральные чанки
-        for (cx in -2..2) {
-            for (cy in -2..2) {
+        for (cx in -GameConfig.INITIAL_CHUNK_RADIUS..GameConfig.INITIAL_CHUNK_RADIUS) {
+            for (cy in -GameConfig.INITIAL_CHUNK_RADIUS..GameConfig.INITIAL_CHUNK_RADIUS) {
                 getOrCreateChunk(cx, cy)
+                discoveredChunks.add(Pair(cx, cy))
             }
         }
         spawnInitialCreatures(0, 0)
@@ -66,13 +72,19 @@ class World(private val spriteManager: SpriteManager) {
     }
 
     private fun generateChunk(chunkX: Int, chunkY: Int): Array<Array<Tile>> {
-        return Array(chunkSize) { x ->
+        // ✅ Сначала генерируем ВСЕ тайлы чанка
+        val chunk = Array(chunkSize) { x ->
             Array(chunkSize) { y ->
                 val worldX = chunkX * chunkSize + x
                 val worldY = chunkY * chunkSize + y
                 generateTile(worldX, worldY)
             }
         }
+
+        // ✅ Потом спавним кур, передавая готовый чанк (НЕ через getTile!)
+        spawnChickensInChunk(chunkX, chunkY, chunk)
+
+        return chunk
     }
 
     private fun generateTile(x: Int, y: Int): Tile {
@@ -86,34 +98,109 @@ class World(private val spriteManager: SpriteManager) {
             noise < -0.2 -> Tile(TileType.SAND)
             temp < 0.2 -> Tile(TileType.SNOW)
             temp > 0.8 && noise > 0.1 -> Tile(TileType.DESERT)
-            noise > 0.3 && temp in 0.3..0.7 -> Tile(TileType.FOREST).apply { treeCount = (noise * 10).toInt().coerceIn(3, 10) }
+            noise > 0.3 && temp in 0.3..0.7 -> Tile(TileType.FOREST).apply {
+                treeCount = (noise * 10).toInt().coerceIn(3, 10)
+            }
             abs(noise) > 0.6 -> Tile(TileType.STONE)
-            else -> if (Random.nextInt(100) < 70) Tile(TileType.GRASS) else Tile(TileType.DIRT)
+            // ✅ ИСПРАВЛЕНО: Больше травы, меньше грязи
+            else -> if (Random.nextInt(100) < 85) Tile(TileType.GRASS) else Tile(TileType.DIRT)
         }
     }
 
-    private fun spawnInitialCreatures(chunkX: Int, chunkY: Int) {
+    // ✅ Исправлено: принимаем готовый чанк, не вызываем getTile()
+    private fun spawnChickensInChunk(chunkX: Int, chunkY: Int, chunk: Array<Array<Tile>>) {
         val chickens = mutableListOf<Chicken>()
-        val creatures = mutableListOf<Creature>()
-        val baseX = chunkX * chunkSize
-        val baseY = chunkY * chunkSize
+        val chickenCount = Random.nextInt(GameConfig.CHICKENS_PER_CHUNK_MIN, GameConfig.CHICKENS_PER_CHUNK_MAX + 1)
 
-        repeat(10) {
-            val x = baseX + Random.nextInt(chunkSize)
-            val y = baseY + Random.nextInt(chunkSize)
-            if (getTile(x, y).type != TileType.WATER) {
-                Chicken(x, y, spriteManager).also { it.world = this@World; chickens.add(it) }
+        repeat(chickenCount) {
+            var attempts = 0
+            while (attempts < 20) {
+                val localX = Random.nextInt(chunkSize)
+                val localY = Random.nextInt(chunkSize)
+                val tile = chunk[localX][localY] // ✅ Берём напрямую из чанка
+
+                // ✅ Только на траве и песке (не на воде, камне, грязи)
+                if (tile.type == TileType.GRASS || tile.type == TileType.SAND) {
+                    val worldX = chunkX * chunkSize + localX
+                    val worldY = chunkY * chunkSize + localY
+                    Chicken(worldX, worldY, spriteManager).also {
+                        it.world = this@World
+                        chickens.add(it)
+                    }
+                    break
+                }
+                attempts++
             }
         }
 
         chickensByChunk[Pair(chunkX, chunkY)] = chickens
+    }
+
+    private fun spawnInitialCreatures(chunkX: Int, chunkY: Int) {
+        val creatures = mutableListOf<Creature>()
         creaturesByChunk[Pair(chunkX, chunkY)] = creatures
     }
 
-    fun updateVisibleChunks(visibleChunks: Set<Pair<Int, Int>>) {
+    // ✅ Обновляем список "открытых" чанков
+    fun markChunksAsDiscovered(visibleChunks: Set<Pair<Int, Int>>) {
         for (chunk in visibleChunks) {
             if (chunk !in chunks) {
                 getOrCreateChunk(chunk.first, chunk.second)
+            }
+            discoveredChunks.add(chunk)
+        }
+    }
+
+    // ✅ Обновляем рост травы
+    fun updateGrassGrowth() {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastGrassGrowthTime < GameConfig.GRASS_GROWTH_TICK_MS) return
+
+        lastGrassGrowthTime = currentTime
+
+        for (chunk in chunks.values) {
+            for (x in 0 until chunkSize) {
+                for (y in 0 until chunkSize) {
+                    val tile = chunk[x][y]
+
+                    // ✅ Трава растёт
+                    if (tile.type == TileType.GRASS && tile.grassGrowth < 100f) {
+                        if (Random.nextFloat() < GameConfig.GRASS_GROWTH_CHANCE) {
+                            tile.grassGrowth += 10f
+                        }
+                    }
+
+                    // ✅ Трава может превратиться в лес
+                    if (tile.type == TileType.GRASS && tile.grassGrowth >= 100f) {
+                        if (Random.nextFloat() < GameConfig.GRASS_TO_FOREST_CHANCE) {
+                            tile.type = TileType.FOREST
+                            tile.treeCount = Random.nextInt(1, 4)
+                            tile.grassGrowth = 0f
+                        }
+                    }
+
+                    // ✅ Грязь зарастает травой
+                    if (tile.type == TileType.DIRT) {
+                        if (Random.nextFloat() < GameConfig.GRASS_GROWTH_CHANCE / 2) {
+                            tile.type = TileType.GRASS
+                            tile.grassGrowth = 50f
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun updateVisibleChunks(visibleChunks: Set<Pair<Int, Int>>) {
+        markChunksAsDiscovered(visibleChunks)
+        updateGrassGrowth() // ✅ Обновляем рост травы
+
+        // Генерируем соседние чанки заранее
+        for (chunk in visibleChunks) {
+            for (dx in -1..1) {
+                for (dy in -1..1) {
+                    getOrCreateChunk(chunk.first + dx, chunk.second + dy)
+                }
             }
         }
     }
@@ -123,4 +210,16 @@ class World(private val spriteManager: SpriteManager) {
 
     fun getCreaturesInChunks(chunks: Set<Pair<Int, Int>>): List<Creature> =
         chunks.flatMap { creaturesByChunk[it] ?: emptyList() }
+
+    // ✅ Счётчик только открытых кур
+    fun getDiscoveredChickenCount(): Int {
+        return chickensByChunk
+            .filter { it.key in discoveredChunks }
+            .values
+            .flatten()
+            .size
+    }
+
+    // ✅ Общий счётчик всех кур
+    fun getTotalChickenCount(): Int = allChickens.size
 }
