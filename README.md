@@ -284,7 +284,7 @@ agp = "9.0.1"
 
 ## 📄 Лицензия
 
-![License](https://img.shields.io/badge/License-MIT-blue.svg)
+[![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Проект распространяется под лицензией MIT.
 
@@ -310,7 +310,7 @@ agp = "9.0.1"
 
 ## 🚀 Скачать
 
-[![Download APK](https://img.shields.io/badge/⬇️_Скачать_God_Simulator-.apk-3DDC84?style=for-the-badge&logo=android)](https://github.com/your-username/GodSimulator/releases/latest/download/GodSimulator.apk)
+[![Download APK](https://img.shields.io/badge/⬇️_Скачать_God_Simulator-.apk-3DDC84?style=for-the-badge&logo=android)](https://github.com/Andrey3141/God-Simulator/releases)
 
 **God Simulator** — наблюдай за жизнью в бесконечном процедурном мире. 🌍🐔
 
