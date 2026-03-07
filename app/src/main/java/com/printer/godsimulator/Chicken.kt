@@ -2,7 +2,6 @@ package com.printer.godsimulator
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
-import kotlin.math.abs
 import kotlin.random.Random
 
 class Chicken(
@@ -12,7 +11,7 @@ class Chicken(
 ) {
     var world: World? = null
 
-    private var direction = Direction.DOWN
+    var direction = Direction.DOWN  // ✅ public для сохранения
     private val walkAnimations = mutableMapOf<Direction, Animation>()
     private val staticFrames = mutableMapOf<Direction, Bitmap>()
 
@@ -22,18 +21,14 @@ class Chicken(
     private var targetX = tileX
     private var targetY = tileY
     private var moveProgress = 0f
-
-    // ✅ Используем конфиг
     private val moveSpeed = GameConfig.CHICKEN_MOVE_SPEED
 
     enum class State { WALKING, IDLE }
-    var state = State.IDLE
+    var state = State.IDLE  // ✅ public для сохранения
     private var idleTimer = 0
-    // ✅ Используем конфиг
     private var idleTime = Random.nextInt(GameConfig.CHICKEN_IDLE_TIME_MIN, GameConfig.CHICKEN_IDLE_TIME_MAX)
 
     init {
-        // Загружаем анимации
         Direction.values().forEach { dir ->
             val frames = spriteManager.getChickenFrames(dir)
             walkAnimations[dir] = Animation(frames, 150)
@@ -52,7 +47,6 @@ class Chicken(
             State.IDLE -> {
                 currentAnimation = null
                 currentStaticFrame = staticFrames[direction]
-
                 idleTimer++
                 if (idleTimer > idleTime) {
                     startRandomWalk()
@@ -64,20 +58,14 @@ class Chicken(
                 updateWalking()
             }
         }
-
         currentAnimation?.update()
     }
 
     private fun startRandomWalk() {
         val directions = listOf(
-            Pair(0, -1), // вверх
-            Pair(0, 1),  // вниз
-            Pair(-1, 0), // влево
-            Pair(1, 0)   // вправо
+            Pair(0, -1), Pair(0, 1), Pair(-1, 0), Pair(1, 0)
         )
-
         val shuffled = directions.shuffled()
-        // ✅ Используем конфиг для дистанции
         val walkDistance = Random.nextInt(GameConfig.CHICKEN_WALK_DISTANCE_MIN, GameConfig.CHICKEN_WALK_DISTANCE_MAX + 1)
 
         for ((dx, dy) in shuffled) {
@@ -86,7 +74,13 @@ class Chicken(
 
             try {
                 val tile = world?.getTile(newX, newY)
-                if (tile != null && tile.type != TileType.WATER && tile.type != TileType.STONE) {
+
+                // ✅ ИСПРАВЛЕНИЕ: Куры НЕ ходят в воду и лес
+                if (tile != null &&
+                    tile.type != TileType.WATER &&
+                    tile.type != TileType.FOREST &&
+                    tile.type != TileType.STONE) {  // ✅ Дополнительно: не ходят по камням
+
                     targetX = newX
                     targetY = newY
 
@@ -100,7 +94,6 @@ class Chicken(
 
                     state = State.WALKING
                     moveProgress = 0f
-                    // ✅ Новый случайный таймер покоя
                     idleTime = Random.nextInt(GameConfig.CHICKEN_IDLE_TIME_MIN, GameConfig.CHICKEN_IDLE_TIME_MAX)
                     return
                 }
@@ -109,13 +102,13 @@ class Chicken(
             }
         }
 
+        // Если не нашли подходящий тайл — остаёмся на месте
         state = State.IDLE
         idleTimer = 0
     }
 
     private fun updateWalking() {
         moveProgress += moveSpeed
-
         if (moveProgress >= 1f) {
             tileX = targetX
             tileY = targetY
@@ -124,21 +117,19 @@ class Chicken(
         }
     }
 
-    fun getPixelX(tileSize: Float): Float {
-        return if (state == State.WALKING) {
+    fun getPixelX(tileSize: Float): Float =
+        if (state == State.WALKING) {
             (tileX + (targetX - tileX) * moveProgress) * tileSize + tileSize / 2
         } else {
             tileX * tileSize + tileSize / 2
         }
-    }
 
-    fun getPixelY(tileSize: Float): Float {
-        return if (state == State.WALKING) {
+    fun getPixelY(tileSize: Float): Float =
+        if (state == State.WALKING) {
             (tileY + (targetY - tileY) * moveProgress) * tileSize + tileSize / 2
         } else {
             tileY * tileSize + tileSize / 2
         }
-    }
 
     fun draw(canvas: Canvas, x: Float, y: Float, size: Float = 32f) {
         if (state == State.WALKING) {
@@ -146,10 +137,8 @@ class Chicken(
         } else {
             currentStaticFrame?.let { frame ->
                 val destRect = Rect(
-                    (x - size/2).toInt(),
-                    (y - size/2).toInt(),
-                    (x + size/2).toInt(),
-                    (y + size/2).toInt()
+                    (x - size/2).toInt(), (y - size/2).toInt(),
+                    (x + size/2).toInt(), (y + size/2).toInt()
                 )
                 canvas.drawBitmap(frame, null, destRect, null)
             }

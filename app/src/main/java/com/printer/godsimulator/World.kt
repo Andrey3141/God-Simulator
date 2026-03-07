@@ -17,29 +17,28 @@ enum class TileType(val color: Int) {
 data class Tile(
     var type: TileType,
     var treeCount: Int = 0,
-    var grassGrowth: Float = 0f  // ✅ Прогресс роста травы (0-100)
+    var grassGrowth: Float = 0f
 )
 
 class World(private val spriteManager: SpriteManager) {
-    private val chunks = mutableMapOf<Pair<Int, Int>, Array<Array<Tile>>>()
+    // ✅ PUBLIC для доступа из WorldSave и GameView
+    val chunks = mutableMapOf<Pair<Int, Int>, Array<Array<Tile>>>()
     val chunkSize = GameConfig.CHUNK_SIZE
 
-    private val creaturesByChunk = mutableMapOf<Pair<Int, Int>, MutableList<Creature>>()
+    val creaturesByChunk = mutableMapOf<Pair<Int, Int>, MutableList<Creature>>()
     val allCreatures: List<Creature> get() = creaturesByChunk.values.flatten()
 
-    private val chickensByChunk = mutableMapOf<Pair<Int, Int>, MutableList<Chicken>>()
+    val chickensByChunk = mutableMapOf<Pair<Int, Int>, MutableList<Chicken>>()
     val allChickens: List<Chicken> get() = chickensByChunk.values.flatten()
 
-    // ✅ Отслеживаем "открытые" чанки
-    private val discoveredChunks = mutableSetOf<Pair<Int, Int>>()
+    // ✅ Отслеживаем "открытые" чанки (которые игрок хотя бы раз видел)
+    val discoveredChunks = mutableSetOf<Pair<Int, Int>>()
 
     private val seed = Random.nextInt()
-
-    // ✅ Таймер для роста травы
     private var lastGrassGrowthTime = System.currentTimeMillis()
 
     init {
-        // Генерируем центральные чанки
+        // Генерируем центральные чанки при создании мира
         for (cx in -GameConfig.INITIAL_CHUNK_RADIUS..GameConfig.INITIAL_CHUNK_RADIUS) {
             for (cy in -GameConfig.INITIAL_CHUNK_RADIUS..GameConfig.INITIAL_CHUNK_RADIUS) {
                 getOrCreateChunk(cx, cy)
@@ -72,7 +71,7 @@ class World(private val spriteManager: SpriteManager) {
     }
 
     private fun generateChunk(chunkX: Int, chunkY: Int): Array<Array<Tile>> {
-        // ✅ Сначала генерируем ВСЕ тайлы чанка
+        // ✅ 1. Сначала генерируем ВСЕ тайлы чанка
         val chunk = Array(chunkSize) { x ->
             Array(chunkSize) { y ->
                 val worldX = chunkX * chunkSize + x
@@ -81,7 +80,7 @@ class World(private val spriteManager: SpriteManager) {
             }
         }
 
-        // ✅ Потом спавним кур, передавая готовый чанк (НЕ через getTile!)
+        // ✅ 2. Потом спавним кур, передавая готовый чанк (НЕ через getTile!)
         spawnChickensInChunk(chunkX, chunkY, chunk)
 
         return chunk
@@ -102,25 +101,26 @@ class World(private val spriteManager: SpriteManager) {
                 treeCount = (noise * 10).toInt().coerceIn(3, 10)
             }
             abs(noise) > 0.6 -> Tile(TileType.STONE)
-            // ✅ ИСПРАВЛЕНО: Больше травы, меньше грязи
+            // ✅ Больше травы (85%), меньше грязи (15%)
             else -> if (Random.nextInt(100) < 85) Tile(TileType.GRASS) else Tile(TileType.DIRT)
         }
     }
 
-    // ✅ Исправлено: принимаем готовый чанк, не вызываем getTile()
+    // ✅ ИСПРАВЛЕНО: принимаем готовый чанк, не вызываем getTile()
     private fun spawnChickensInChunk(chunkX: Int, chunkY: Int, chunk: Array<Array<Tile>>) {
         val chickens = mutableListOf<Chicken>()
         val chickenCount = Random.nextInt(GameConfig.CHICKENS_PER_CHUNK_MIN, GameConfig.CHICKENS_PER_CHUNK_MAX + 1)
 
         repeat(chickenCount) {
             var attempts = 0
-            while (attempts < 20) {
+            while (attempts < 30) {  // ✅ Увеличили попытки для надёжности
                 val localX = Random.nextInt(chunkSize)
                 val localY = Random.nextInt(chunkSize)
-                val tile = chunk[localX][localY] // ✅ Берём напрямую из чанка
+                val tile = chunk[localX][localY]
 
-                // ✅ Только на траве и песке (не на воде, камне, грязи)
-                if (tile.type == TileType.GRASS || tile.type == TileType.SAND) {
+                // ✅ ИСПРАВЛЕНИЕ: Куры спавнятся ТОЛЬКО на траве, песке или грязи
+                // ❌ Не спавнятся на: воде, лесе, камне, снегу, пустыне
+                if (tile.type == TileType.GRASS || tile.type == TileType.SAND || tile.type == TileType.DIRT) {
                     val worldX = chunkX * chunkSize + localX
                     val worldY = chunkY * chunkSize + localY
                     Chicken(worldX, worldY, spriteManager).also {
@@ -137,8 +137,7 @@ class World(private val spriteManager: SpriteManager) {
     }
 
     private fun spawnInitialCreatures(chunkX: Int, chunkY: Int) {
-        val creatures = mutableListOf<Creature>()
-        creaturesByChunk[Pair(chunkX, chunkY)] = creatures
+        creaturesByChunk[Pair(chunkX, chunkY)] = mutableListOf()
     }
 
     // ✅ Обновляем список "открытых" чанков
@@ -193,7 +192,7 @@ class World(private val spriteManager: SpriteManager) {
 
     fun updateVisibleChunks(visibleChunks: Set<Pair<Int, Int>>) {
         markChunksAsDiscovered(visibleChunks)
-        updateGrassGrowth() // ✅ Обновляем рост травы
+        updateGrassGrowth()
 
         // Генерируем соседние чанки заранее
         for (chunk in visibleChunks) {
@@ -211,7 +210,7 @@ class World(private val spriteManager: SpriteManager) {
     fun getCreaturesInChunks(chunks: Set<Pair<Int, Int>>): List<Creature> =
         chunks.flatMap { creaturesByChunk[it] ?: emptyList() }
 
-    // ✅ Счётчик только открытых кур
+    // ✅ Счётчик только открытых кур (из посещённых чанков)
     fun getDiscoveredChickenCount(): Int {
         return chickensByChunk
             .filter { it.key in discoveredChunks }
@@ -220,6 +219,6 @@ class World(private val spriteManager: SpriteManager) {
             .size
     }
 
-    // ✅ Общий счётчик всех кур
+    // ✅ Общий счётчик всех кур (включая ещё не открытые)
     fun getTotalChickenCount(): Int = allChickens.size
 }
