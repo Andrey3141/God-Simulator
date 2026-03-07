@@ -296,18 +296,6 @@ agp = "9.0.1"
 
 [![GitHub](https://img.shields.io/badge/GitHub-Profile-181717?logo=github&style=for-the-badge)](https://github.com/Andrey3141)
 
-### 📋 Планы по развитию
-
-| Версия | Статус | Планируемые функции |
-|--------|--------|---------------------|
-| 0.1.0 | ✅ Выпущена | Базовый движок, PixelMan |
-| 0.2.0 | ✅ Выпущена | Чанки, курицы, существа |
-| 0.3.0 | ✅ Выпущена | Рост травы, конфиг, счётчики |
-| 0.4.0 | 🔄 В разработке | Сохранение мира, взаимодействие |
-| 1.0.0 | 📅 В планах | Смена дня/ночи, квесты, звуки |
-
----
-
 ## 🚀 Скачать
 
 [![Download APK](https://img.shields.io/badge/⬇️_Скачать_God_Simulator-.apk-3DDC84?style=for-the-badge&logo=android)](https://github.com/Andrey3141/God-Simulator/releases)
