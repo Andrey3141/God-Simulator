@@ -1,4 +1,4 @@
-## 🎮 God Simulator v0.3.0
+## 🎮 God Simulator v0.4.0
 
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.0+-purple?logo=kotlin)
 ![Android](https://img.shields.io/badge/Android-7.0+-green?logo=android)

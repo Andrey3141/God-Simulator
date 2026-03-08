@@ -15,8 +15,17 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private lateinit var world: World
     private val tileSize = GameConfig.TILE_SIZE
 
+    // ✅ Текстуры для всех тайлов (без отдельной текстуры пустыни)
     private var grassTexture: Bitmap? = null
-    private var grassTexturePaint: Paint? = null
+    private var sandTexture: Bitmap? = null        // ✅ Пустыня использует эту же текстуру
+    private var snowTexture: Bitmap? = null
+    private var stoneTexture: Bitmap? = null
+    private var waterTexture: Bitmap? = null
+    private var treeTexture: Bitmap? = null
+    private var dirtTexture: Bitmap? = null
+    // ❌ desertTexture — удалено (пустыня = песок)
+
+    private var texturePaint: Paint? = null
 
     private var cameraX = 0f
     private var cameraY = 0f
@@ -34,7 +43,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var fps = 0
     private var frameCount = 0
 
-    // ✅ Кнопки (справа сверху)
+    // Кнопки (справа сверху)
     private var saveButtonRect = RectF()
     private var newWorldButtonRect = RectF()
     private var saveButtonPressed = false
@@ -43,16 +52,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private val buttonWidth = 140f
     private val buttonMargin = 10f
     private val buttonSpacing = 8f
-
-    private val treeTrunkPaint = Paint().apply {
-        color = Color.rgb(80, 50, 30)
-        isAntiAlias = false
-    }
-
-    private val treeCrownPaint = Paint().apply {
-        color = Color.rgb(0, 100, 0)
-        isAntiAlias = false
-    }
 
     private val textPaint = Paint().apply {
         color = Color.WHITE
@@ -97,16 +96,21 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         }
     }
 
+    // ✅ Загрузка всех текстур (без desert.jpg)
     private fun loadTextures(context: Context) {
-        try {
-            grassTexture = BitmapFactory.decodeResource(context.resources, R.drawable.grass)
-            grassTexturePaint = Paint().apply {
-                isAntiAlias = false
-                isFilterBitmap = false
-            }
-        } catch (e: Exception) {
-            grassTexture = null
+        texturePaint = Paint().apply {
+            isAntiAlias = false
+            isFilterBitmap = false
         }
+
+        try { grassTexture = BitmapFactory.decodeResource(context.resources, R.drawable.grass) } catch (e: Exception) { grassTexture = null }
+        try { sandTexture = BitmapFactory.decodeResource(context.resources, R.drawable.sand) } catch (e: Exception) { sandTexture = null }
+        try { snowTexture = BitmapFactory.decodeResource(context.resources, R.drawable.snow) } catch (e: Exception) { snowTexture = null }
+        try { stoneTexture = BitmapFactory.decodeResource(context.resources, R.drawable.stone) } catch (e: Exception) { stoneTexture = null }
+        try { waterTexture = BitmapFactory.decodeResource(context.resources, R.drawable.water) } catch (e: Exception) { waterTexture = null }
+        try { treeTexture = BitmapFactory.decodeResource(context.resources, R.drawable.tree) } catch (e: Exception) { treeTexture = null }
+        try { dirtTexture = BitmapFactory.decodeResource(context.resources, R.drawable.dirt) } catch (e: Exception) { dirtTexture = null }
+        // ❌ desertTexture — удалено
     }
 
     private fun initTileColorCache() {
@@ -115,6 +119,21 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
                 color = type.color
                 isAntiAlias = false
             }
+        }
+    }
+
+    // ✅ Получение текстуры для типа тайла (пустыня = песок)
+    private fun getTextureForTile(type: TileType): Bitmap? {
+        return when (type) {
+            TileType.GRASS -> grassTexture
+            TileType.SAND -> sandTexture
+            TileType.DESERT -> sandTexture    // ✅ Пустыня использует текстуру песка
+            TileType.SNOW -> snowTexture
+            TileType.STONE -> stoneTexture
+            TileType.WATER -> waterTexture
+            TileType.TREE -> treeTexture
+            TileType.DIRT -> dirtTexture
+            TileType.FOREST -> grassTexture   // Лес = трава + деревья
         }
     }
 
@@ -215,76 +234,47 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         }
     }
 
-    // ✅ Кнопки — ПРАВАЯ ВЕРХНЯЯ ЧАСТЬ
     private fun drawButtons(canvas: Canvas) {
         val btnH = buttonHeight
         val btnW = buttonWidth
 
-        // Кнопка "💾 Сохранить" — верхняя
         saveButtonRect = RectF(
             viewWidth - buttonMargin - btnW,
             buttonMargin,
             viewWidth - buttonMargin,
             buttonMargin + btnH
         )
-        canvas.drawRoundRect(
-            saveButtonRect,
-            12f, 12f,
-            if (saveButtonPressed) buttonPressedPaint else buttonPaint
-        )
-        val saveTextPaint = Paint(textPaint).apply {
-            textAlign = Paint.Align.CENTER
-            textSize = 16f
-        }
-        canvas.drawText("💾 Сохранить",
-            saveButtonRect.centerX(),
-            saveButtonRect.centerY() + 6f,
-            saveTextPaint)
+        canvas.drawRoundRect(saveButtonRect, 12f, 12f, if (saveButtonPressed) buttonPressedPaint else buttonPaint)
+        val saveTextPaint = Paint(textPaint).apply { textAlign = Paint.Align.CENTER; textSize = 16f }
+        canvas.drawText("💾 Сохранить", saveButtonRect.centerX(), saveButtonRect.centerY() + 6f, saveTextPaint)
 
-        // Кнопка "🔄 Новый мир" — нижняя
         newWorldButtonRect = RectF(
             viewWidth - buttonMargin - btnW,
             buttonMargin + btnH + buttonSpacing,
             viewWidth - buttonMargin,
             buttonMargin + btnH * 2 + buttonSpacing
         )
-        canvas.drawRoundRect(
-            newWorldButtonRect,
-            12f, 12f,
-            if (newWorldButtonPressed) buttonDeletePressedPaint else buttonDeletePaint
-        )
-        val newWorldTextPaint = Paint(textPaint).apply {
-            textAlign = Paint.Align.CENTER
-            textSize = 16f
-        }
-        canvas.drawText("🔄 Новый мир",
-            newWorldButtonRect.centerX(),
-            newWorldButtonRect.centerY() + 6f,
-            newWorldTextPaint)
+        canvas.drawRoundRect(newWorldButtonRect, 12f, 12f, if (newWorldButtonPressed) buttonDeletePressedPaint else buttonDeletePaint)
+        val newWorldTextPaint = Paint(textPaint).apply { textAlign = Paint.Align.CENTER; textSize = 16f }
+        canvas.drawText("🔄 Новый мир", newWorldButtonRect.centerX(), newWorldButtonRect.centerY() + 6f, newWorldTextPaint)
     }
 
-    // ✅ Статистика — ЛЕВАЯ ВЕРХНЯЯ ЧАСТЬ
     private fun drawStats(canvas: Canvas) {
         val baseX = 15f
         val baseY = 20f
         val stepY = 28f
 
-        val statsPaint = Paint(textPaint).apply {
-            textAlign = Paint.Align.LEFT
-            textSize = 16f
-        }
+        val statsPaint = Paint(textPaint).apply { textAlign = Paint.Align.LEFT; textSize = 16f }
 
         canvas.drawText("⚡ FPS: $fps", baseX, baseY, statsPaint)
         canvas.drawText("🐔 Кур: ${world.getDiscoveredChickenCount()}", baseX, baseY + stepY, statsPaint)
         canvas.drawText("🧍 Существ: ${world.allCreatures.size}", baseX, baseY + stepY * 2, statsPaint)
 
-        val hintPaint = Paint(statsPaint).apply {
-            textSize = 14f
-            alpha = 180
-        }
+        val hintPaint = Paint(statsPaint).apply { textSize = 14f; alpha = 180 }
         canvas.drawText("👆 Тащи для перемещения", baseX, baseY + stepY * 3.5f, hintPaint)
     }
 
+    // ✅ Отрисовка мира с текстурами
     private fun drawWorld(canvas: Canvas) {
         val scaledTileSize = (tileSize * zoom).toInt()
         if (scaledTileSize <= 0) return
@@ -292,33 +282,26 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         val startY = floor((cameraY - tileSize) / scaledTileSize).toInt()
         val endX = floor((cameraX + viewWidth + tileSize) / scaledTileSize).toInt()
         val endY = floor((cameraY + viewHeight + tileSize) / scaledTileSize).toInt()
+
         for (x in startX..endX) {
             for (y in startY..endY) {
                 val tile = world.getTile(x, y)
                 val screenX = x * scaledTileSize - cameraX
                 val screenY = y * scaledTileSize - cameraY
                 val size = scaledTileSize.toFloat()
+
                 if (screenX + size < 0 || screenX > viewWidth || screenY + size < 0 || screenY > viewHeight) continue
-                if (tile.type == TileType.GRASS && grassTexture != null) {
+
+                // ✅ Рисуем текстуру или цвет (fallback)
+                val texture = getTextureForTile(tile.type)
+                if (texture != null && texturePaint != null) {
                     val dstRect = Rect(screenX.toInt(), screenY.toInt(), (screenX + size).toInt(), (screenY + size).toInt())
-                    canvas.drawBitmap(grassTexture!!, null, dstRect, grassTexturePaint)
+                    canvas.drawBitmap(texture, null, dstRect, texturePaint)
                 } else {
                     canvas.drawRect(screenX, screenY, screenX + size, screenY + size,
                         tileColorCache[tile.type] ?: tileColorCache[TileType.GRASS]!!)
                 }
-                if (tile.treeCount > 0 && zoom > 1.0f) {
-                    drawTrees(canvas, screenX, screenY, size, tile.treeCount)
-                }
             }
-        }
-    }
-
-    private fun drawTrees(canvas: Canvas, x: Float, y: Float, size: Float, count: Int) {
-        for (i in 0 until count.coerceAtMost(GameConfig.TREE_MAX_COUNT)) {
-            val treeX = x + size * (0.3f + i * 0.2f)
-            val treeY = y + size * 0.5f
-            canvas.drawRect(treeX - size/12, treeY, treeX + size/12, treeY + size/4, treeTrunkPaint)
-            canvas.drawCircle(treeX, treeY - size/6, size/6, treeCrownPaint)
         }
     }
 
@@ -354,7 +337,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         }
     }
 
-    // ✅ Обработка нажатий
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val x = event.x
         val y = event.y
