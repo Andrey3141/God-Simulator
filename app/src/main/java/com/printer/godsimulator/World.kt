@@ -12,7 +12,8 @@ enum class TileType(val color: Int) {
     SNOW(Color.rgb(255, 255, 255)),
     FOREST(Color.rgb(0, 100, 0)),
     DESERT(Color.rgb(238, 203, 173)),
-    TREE(Color.rgb(0, 150, 0))
+    TREE(Color.rgb(0, 150, 0)),
+    MUD_WITH_WORM(Color.rgb(80, 50, 20))  // ✅ Грязь с червяком
 }
 
 data class Tile(
@@ -58,7 +59,7 @@ class World(private val spriteManager: SpriteManager) {
         return getOrCreateChunk(chunkX, chunkY)[localX][localY]
     }
 
-    private fun getOrCreateChunk(chunkX: Int, chunkY: Int): Array<Array<Tile>> {
+    fun getOrCreateChunk(chunkX: Int, chunkY: Int): Array<Array<Tile>> {
         return chunks.getOrPut(Pair(chunkX, chunkY)) { generateChunk(chunkX, chunkY) }
     }
 
@@ -106,7 +107,8 @@ class World(private val spriteManager: SpriteManager) {
                 val localY = Random.nextInt(chunkSize)
                 val tile = chunk[localX][localY]
 
-                if (tile.type == TileType.GRASS || tile.type == TileType.SAND || tile.type == TileType.DIRT) {
+                if (tile.type == TileType.GRASS || tile.type == TileType.SAND ||
+                    tile.type == TileType.DIRT || tile.type == TileType.MUD_WITH_WORM) {
                     val worldX = chunkX * chunkSize + localX
                     val worldY = chunkY * chunkSize + localY
                     Chicken(worldX, worldY, spriteManager).also {
@@ -125,41 +127,8 @@ class World(private val spriteManager: SpriteManager) {
         creaturesByChunk[Pair(chunkX, chunkY)] = mutableListOf()
     }
 
-    // ✅ НОВЫЙ МЕТОД: Расчёт шанса роста дерева на основе соседей
-    private fun calculateTreeGrowthChance(chunk: Array<Array<Tile>>, x: Int, y: Int): Float {
-        var totalChance = GameConfig.GRASS_TO_TREE_CHANCE_BASE
-
-        // Проверяем 4 соседей (верх, низ, лево, право)
-        val directions = listOf(Pair(0, -1), Pair(0, 1), Pair(-1, 0), Pair(1, 0))
-
-        for ((dx, dy) in directions) {
-            val nx = x + dx
-            val ny = y + dy
-
-            // Проверяем границы чанка
-            if (nx in 0 until chunkSize && ny in 0 until chunkSize) {
-                val neighbor = chunk[nx][ny]
-
-                when (neighbor.type) {
-                    // ✅ Грязь: +6% к шансу
-                    TileType.DIRT -> totalChance += GameConfig.TREE_GROWTH_BONUS_DIRT
-                    // ✅ Трава: +5% к шансу (кумулятивно)
-                    TileType.GRASS -> totalChance += GameConfig.TREE_GROWTH_BONUS_GRASS
-                    // ✅ Песок: +0.1% к шансу
-                    TileType.SAND -> totalChance += GameConfig.TREE_GROWTH_BONUS_SAND
-                    // ❌ Вода/Снег/Камень: +0% (не влияют)
-                    TileType.WATER, TileType.SNOW, TileType.STONE -> {}
-                    // ❌ Дерево: не влияет на рост нового дерева рядом
-                    TileType.TREE, TileType.FOREST, TileType.DESERT -> {}
-                }
-            }
-        }
-
-        // Ограничиваем шанс максимумом
-        return totalChance.coerceAtMost(GameConfig.TREE_GROWTH_CHANCE_MAX)
-    }
-
-    fun convertGrassToDirt(x: Int, y: Int) {
+    // ✅ НОВЫЙ МЕТОД: Превращение травы в грязь (с шансом на червяка)
+    fun convertGrassToDirt(x: Int, y: Int): Boolean {
         val chunkX = floor(x.toDouble() / chunkSize).toInt()
         val chunkY = floor(y.toDouble() / chunkSize).toInt()
         var localX = x - chunkX * chunkSize
@@ -169,13 +138,41 @@ class World(private val spriteManager: SpriteManager) {
         if (localX >= chunkSize) localX -= chunkSize
         if (localY >= chunkSize) localY -= chunkSize
 
-        val chunk = chunks[Pair(chunkX, chunkY)] ?: return
+        val chunk = chunks[Pair(chunkX, chunkY)] ?: return false
         val tile = chunk[localX][localY]
 
         if (tile.type == TileType.GRASS) {
-            tile.type = TileType.DIRT
+            // ✅ Шанс на червяка
+            if (Random.nextFloat() < GameConfig.GRASS_TO_WORM_CHANCE) {
+                tile.type = TileType.MUD_WITH_WORM
+            } else {
+                tile.type = TileType.DIRT
+            }
             tile.grassGrowth = 0f
+            return true
         }
+        return false
+    }
+
+    // ✅ НОВЫЙ МЕТОД: Превращение грязи с червяком в обычную грязь
+    fun convertMudWithWormToDirt(x: Int, y: Int): Boolean {
+        val chunkX = floor(x.toDouble() / chunkSize).toInt()
+        val chunkY = floor(y.toDouble() / chunkSize).toInt()
+        var localX = x - chunkX * chunkSize
+        var localY = y - chunkY * chunkSize
+        if (localX < 0) localX += chunkSize
+        if (localY < 0) localY += chunkSize
+        if (localX >= chunkSize) localX -= chunkSize
+        if (localY >= chunkSize) localY -= chunkSize
+
+        val chunk = chunks[Pair(chunkX, chunkY)] ?: return false
+        val tile = chunk[localX][localY]
+
+        if (tile.type == TileType.MUD_WITH_WORM) {
+            tile.type = TileType.DIRT
+            return true
+        }
+        return false
     }
 
     fun markChunksAsDiscovered(visibleChunks: Set<Pair<Int, Int>>) {
@@ -195,14 +192,12 @@ class World(private val spriteManager: SpriteManager) {
                 for (y in 0 until chunkSize) {
                     val tile = chunk[x][y]
 
-                    // ✅ Рост травы
                     if (tile.type == TileType.GRASS && tile.grassGrowth < 100f) {
                         if (Random.nextFloat() < GameConfig.GRASS_GROWTH_CHANCE) {
                             tile.grassGrowth += 10f
                         }
                     }
 
-                    // ✅ Превращение травы в ДЕРЕВО (с учётом соседей)
                     if (tile.type == TileType.GRASS && tile.grassGrowth >= 100f) {
                         val treeChance = calculateTreeGrowthChance(chunk, x, y)
                         if (Random.nextFloat() < treeChance) {
@@ -211,7 +206,6 @@ class World(private val spriteManager: SpriteManager) {
                         }
                     }
 
-                    // ✅ Зарастание грязи травой
                     if (tile.type == TileType.DIRT) {
                         if (Random.nextFloat() < GameConfig.GRASS_GROWTH_CHANCE / 2) {
                             tile.type = TileType.GRASS
@@ -221,6 +215,26 @@ class World(private val spriteManager: SpriteManager) {
                 }
             }
         }
+    }
+
+    private fun calculateTreeGrowthChance(chunk: Array<Array<Tile>>, x: Int, y: Int): Float {
+        var totalChance = GameConfig.GRASS_TO_TREE_CHANCE_BASE
+        val directions = listOf(Pair(0, -1), Pair(0, 1), Pair(-1, 0), Pair(1, 0))
+
+        for ((dx, dy) in directions) {
+            val nx = x + dx
+            val ny = y + dy
+            if (nx in 0 until chunkSize && ny in 0 until chunkSize) {
+                val neighbor = chunk[nx][ny]
+                when (neighbor.type) {
+                    TileType.DIRT -> totalChance += GameConfig.TREE_GROWTH_BONUS_DIRT
+                    TileType.GRASS -> totalChance += GameConfig.TREE_GROWTH_BONUS_GRASS
+                    TileType.SAND -> totalChance += GameConfig.TREE_GROWTH_BONUS_SAND
+                    else -> {}
+                }
+            }
+        }
+        return totalChance.coerceAtMost(GameConfig.TREE_GROWTH_CHANCE_MAX)
     }
 
     fun updateVisibleChunks(visibleChunks: Set<Pair<Int, Int>>) {

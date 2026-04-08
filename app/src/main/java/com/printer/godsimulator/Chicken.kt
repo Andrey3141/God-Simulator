@@ -13,7 +13,8 @@ class Chicken(
 
     var direction = Direction.DOWN
     private val walkAnimations = mutableMapOf<Direction, Animation>()
-    private val eatAnimations = mutableMapOf<Direction, Animation>()
+    private val eatGrassAnimations = mutableMapOf<Direction, Animation>()
+    private val eatWormAnimations = mutableMapOf<Direction, Animation>()
     private val staticFrames = mutableMapOf<Direction, Bitmap>()
 
     private var currentAnimation: Animation? = null
@@ -24,27 +25,29 @@ class Chicken(
     private var moveProgress = 0f
     private val moveSpeed = GameConfig.CHICKEN_MOVE_SPEED
 
-    enum class State { WALKING, IDLE, EATING }
+    enum class State {
+        IDLE,
+        WALKING,
+        EATING  // ✅ Добавлено состояние поедания
+    }
     var state = State.IDLE
     private var idleTimer = 0
     private var eatTimer = 0
     private val idleTime = Random.nextInt(GameConfig.CHICKEN_IDLE_TIME_MIN, GameConfig.CHICKEN_IDLE_TIME_MAX)
-    private val eatDuration = GameConfig.CHICKEN_EAT_DURATION_FRAMES
 
-    // ✅ Список разрешённых тайлов для куриц
-    private val walkableTiles = GameConfig.CHICKEN_WALKABLE_TILES
-        .split(",")
-        .map { it.trim() }
-        .mapNotNull { TileType.values().find { type -> type.name == it } }
-        .toSet()
+    // ✅ Флаг: есть ли червяк в текущей грязи
+    private var hasWorm = false
 
     init {
         Direction.values().forEach { dir ->
             val walkFrames = spriteManager.getChickenFrames(dir)
             walkAnimations[dir] = Animation(walkFrames, 150)
 
-            val eatFrames = spriteManager.getChickenEatFrames(dir)
-            eatAnimations[dir] = Animation(eatFrames, 200)
+            val eatGrassFrames = spriteManager.getChickenEatFrames(dir)
+            eatGrassAnimations[dir] = Animation(eatGrassFrames, 200)
+
+            val eatWormFrames = spriteManager.getChickenEatWormFrames(dir)
+            eatWormAnimations[dir] = Animation(eatWormFrames, 150)
 
             spriteManager.getChickenStaticFrame(dir)?.let { frame ->
                 staticFrames[dir] = frame
@@ -72,16 +75,20 @@ class Chicken(
                 updateWalking()
             }
             State.EATING -> {
-                currentAnimation = eatAnimations[direction]
+                currentAnimation = eatGrassAnimations[direction]
                 currentStaticFrame = null
-                updateEating()
+                updateEatingGrass()
+            }
+            State.EATING -> {
+                currentAnimation = eatWormAnimations[direction]
+                currentStaticFrame = null
+                updateEatingWorm()
             }
         }
         currentAnimation?.update()
     }
 
     private fun tryToEatOrWalk() {
-        // ✅ Проверяем шанс поесть (настраивается в GameConfig)
         if (Random.nextFloat() < GameConfig.CHICKEN_EAT_CHANCE) {
             val directions = listOf(Pair(0, -1), Pair(0, 1), Pair(-1, 0), Pair(1, 0))
             for ((dx, dy) in directions) {
@@ -89,7 +96,8 @@ class Chicken(
                 val newY = tileY + dy
                 try {
                     val tile = world?.getTile(newX, newY)
-                    // ✅ Едим ТОЛЬКО траву
+
+                    // ✅ Проверяем траву
                     if (tile != null && tile.type == TileType.GRASS) {
                         direction = when {
                             dy < 0 -> Direction.UP
@@ -101,12 +109,28 @@ class Chicken(
                         state = State.EATING
                         eatTimer = 0
                         idleTimer = 0
+                        hasWorm = false  // Сбрасываем флаг
+                        return
+                    }
+
+                    // ✅ Проверяем грязь с червяком
+                    if (tile != null && tile.type == TileType.MUD_WITH_WORM) {
+                        direction = when {
+                            dy < 0 -> Direction.UP
+                            dy > 0 -> Direction.DOWN
+                            dx < 0 -> Direction.LEFT
+                            dx > 0 -> Direction.RIGHT
+                            else -> direction
+                        }
+                        state = State.EATING
+                        eatTimer = 0
+                        idleTimer = 0
+                        hasWorm = true  // ✅ Червяк есть!
                         return
                     }
                 } catch (e: Exception) {}
             }
         }
-        // ✅ Нет травы или не захотели есть — идём гулять
         startRandomWalk()
     }
 
@@ -120,19 +144,31 @@ class Chicken(
             val newY = tileY + dy * walkDistance
 
             try {
-                // ✅ ПРОВЕРКА 1: Конечная точка должна быть разрешённым тайлом
                 val targetTile = world?.getTile(newX, newY)
-                if (targetTile == null || targetTile.type !in walkableTiles) {
-                    continue
+                if (targetTile == null) continue
+
+                // ✅ Разрешённые тайлы для ходьбы
+                val isWalkable = when (targetTile.type) {
+                    TileType.GRASS, TileType.SAND, TileType.DIRT, TileType.MUD_WITH_WORM -> true
+                    else -> false
                 }
 
-                // ✅ ПРОВЕРКА 2: Проверяем КАЖДЫЙ тайл на пути (чтобы не проходить сквозь препятствия)
+                if (!isWalkable) continue
+
                 var canPass = true
                 for (step in 1..walkDistance) {
                     val checkX = tileX + dx * step
                     val checkY = tileY + dy * step
                     val checkTile = world?.getTile(checkX, checkY)
-                    if (checkTile == null || checkTile.type !in walkableTiles) {
+                    if (checkTile == null) {
+                        canPass = false
+                        break
+                    }
+                    val isStepWalkable = when (checkTile.type) {
+                        TileType.GRASS, TileType.SAND, TileType.DIRT, TileType.MUD_WITH_WORM -> true
+                        else -> false
+                    }
+                    if (!isStepWalkable) {
                         canPass = false
                         break
                     }
@@ -168,14 +204,35 @@ class Chicken(
         }
     }
 
-    private fun updateEating() {
+    // ✅ Поедание травы
+    private fun updateEatingGrass() {
         eatTimer++
-        if (eatTimer >= eatDuration) {
-            // ✅ Поели траву — превращаем в грязь
+        if (eatTimer >= GameConfig.CHICKEN_EAT_GRASS_DURATION) {
+            // ✅ Превращаем траву в грязь (с шансом на червяка)
             world?.convertGrassToDirt(tileX, tileY)
+
+            // ✅ Если был червяк — переходим к поеданию червяка
+            if (hasWorm) {
+                state = State.EATING
+                eatTimer = 0
+            } else {
+                state = State.IDLE
+                eatTimer = 0
+                idleTimer = 0
+            }
+        }
+    }
+
+    // ✅ Поедание червяка
+    private fun updateEatingWorm() {
+        eatTimer++
+        if (eatTimer >= GameConfig.CHICKEN_EAT_WORM_DURATION) {
+            // ✅ Превращаем грязь с червяком в обычную грязь
+            world?.convertMudWithWormToDirt(tileX, tileY)
             state = State.IDLE
             eatTimer = 0
             idleTimer = 0
+            hasWorm = false
         }
     }
 
@@ -194,15 +251,18 @@ class Chicken(
         }
 
     fun draw(canvas: Canvas, x: Float, y: Float, size: Float = 32f) {
-        if (state == State.WALKING || state == State.EATING) {
-            currentAnimation?.draw(canvas, x, y, size)
-        } else {
-            currentStaticFrame?.let { frame ->
-                val destRect = Rect(
-                    (x - size/2).toInt(), (y - size/2).toInt(),
-                    (x + size/2).toInt(), (y + size/2).toInt()
-                )
-                canvas.drawBitmap(frame, null, destRect, null)
+        when (state) {
+            State.WALKING, State.EATING -> {
+                currentAnimation?.draw(canvas, x, y, size)
+            }
+            State.IDLE -> {
+                currentStaticFrame?.let { frame ->
+                    val destRect = Rect(
+                        (x - size/2).toInt(), (y - size/2).toInt(),
+                        (x + size/2).toInt(), (y + size/2).toInt()
+                    )
+                    canvas.drawBitmap(frame, null, destRect, null)
+                }
             }
         }
     }

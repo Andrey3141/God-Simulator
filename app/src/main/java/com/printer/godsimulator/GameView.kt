@@ -15,15 +15,15 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private lateinit var world: World
     private val tileSize = GameConfig.TILE_SIZE
 
-    // ✅ Текстуры для всех тайлов (без отдельной текстуры пустыни)
+    // ✅ Текстуры для всех тайлов
     private var grassTexture: Bitmap? = null
-    private var sandTexture: Bitmap? = null        // ✅ Пустыня использует эту же текстуру
+    private var sandTexture: Bitmap? = null
     private var snowTexture: Bitmap? = null
     private var stoneTexture: Bitmap? = null
     private var waterTexture: Bitmap? = null
     private var treeTexture: Bitmap? = null
     private var dirtTexture: Bitmap? = null
-    // ❌ desertTexture — удалено (пустыня = песок)
+    private var mudWithWormTexture: Bitmap? = null  // ✅ НОВАЯ: грязь с червяком
 
     private var texturePaint: Paint? = null
 
@@ -96,7 +96,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         }
     }
 
-    // ✅ Загрузка всех текстур (без desert.jpg)
+    // ✅ Загрузка всех текстур
     private fun loadTextures(context: Context) {
         texturePaint = Paint().apply {
             isAntiAlias = false
@@ -110,7 +110,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         try { waterTexture = BitmapFactory.decodeResource(context.resources, R.drawable.water) } catch (e: Exception) { waterTexture = null }
         try { treeTexture = BitmapFactory.decodeResource(context.resources, R.drawable.tree) } catch (e: Exception) { treeTexture = null }
         try { dirtTexture = BitmapFactory.decodeResource(context.resources, R.drawable.dirt) } catch (e: Exception) { dirtTexture = null }
-        // ❌ desertTexture — удалено
+        try { mudWithWormTexture = BitmapFactory.decodeResource(context.resources, R.drawable.mud_with_worm) } catch (e: Exception) { mudWithWormTexture = null }  // ✅ Загружаем текстуру грязи с червяком
     }
 
     private fun initTileColorCache() {
@@ -122,18 +122,19 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         }
     }
 
-    // ✅ Получение текстуры для типа тайла (пустыня = песок)
+    // ✅ Получение текстуры для типа тайла
     private fun getTextureForTile(type: TileType): Bitmap? {
         return when (type) {
             TileType.GRASS -> grassTexture
             TileType.SAND -> sandTexture
-            TileType.DESERT -> sandTexture    // ✅ Пустыня использует текстуру песка
             TileType.SNOW -> snowTexture
             TileType.STONE -> stoneTexture
             TileType.WATER -> waterTexture
             TileType.TREE -> treeTexture
             TileType.DIRT -> dirtTexture
-            TileType.FOREST -> grassTexture   // Лес = трава + деревья
+            TileType.MUD_WITH_WORM -> mudWithWormTexture  // ✅ Возвращаем текстуру грязи с червяком
+            TileType.FOREST -> grassTexture
+            TileType.DESERT -> sandTexture
         }
     }
 
